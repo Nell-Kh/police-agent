@@ -98,7 +98,7 @@ def test_the_concession_replay_exception_is_honoured(config) -> None:
     {"3,3": float("nan")},
     {"3,3": float("inf")},
     {"3,3": -0.5},
-    {"3,3": 5.0},          # above the locked emission ceiling
+    {"3,3": 50.0},         # above the unclamped ceiling emit/decay (0.9/0.1=9.0)
     {"99,0": 0.5},         # off the board - would drag the trust centroid
 ])
 def test_forged_scent_fields_are_violations(view, config, smell) -> None:
@@ -106,8 +106,15 @@ def test_forged_scent_fields_are_violations(view, config, smell) -> None:
 
 
 def test_lawful_scent_passes(view, config) -> None:
-    """The fuzz battery must not reject a well-formed message - no false positives."""
+    """No false positives: a clamped field AND a lawful unclamped one both pass.
+
+    ``0.9`` is a kit-clamped cell; ``1.14``/``1.71`` are a book peer accumulating
+    past the emit clamp toward emit/decay (both legal). Capping at emit turned
+    uoh-ay26's 1.14 into a technical loss (G010 g01); the gate now accepts any
+    value the unclamped model can physically reach."""
     receive_turn(view, msg(smell={"3,3": 0.9, "3,4": 0.62}), config.contract)
+    assert view.result is None
+    receive_turn(view, msg(smell={"3,3": 1.14, "3,4": 1.71}), config.contract)
     assert view.result is None
 
 

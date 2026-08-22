@@ -66,14 +66,26 @@ def _check_step(view: WorldView, message: TurnMessage, contract: GameContract) -
 
 
 def _check_scent(view: WorldView, message: TurnMessage, contract: GameContract) -> str | None:
-    """Scent values must be finite, non-negative, capped, and on the board.
+    """Scent values must be finite, non-negative, physically possible, on-board.
 
-    The scent model is locked at negotiation; a value above the emission
-    ceiling or a cell beyond the grid is not noise, it is a forged field -
-    and a NaN would silently poison every belief update downstream.
+    The anti-forgery ceiling is the UNCLAMPED accumulation fixed point,
+    ``emit / decay`` (``0.9 / 0.1 = 9.0``), NOT the emission clamp ``emit``
+    (0.9). The scent clamp is a lawful dialect fork (``interop_profile``): a kit
+    peer clamps a re-emitted cell at ``emit``, a book peer lets it accumulate
+    toward ``emit/decay``. Both are legal, ``scent_model_sha256`` is advisory,
+    and :mod:`domain.emitter` already reads a foreign unclamped field through
+    our own kernel. This gate had contradicted all of that - capping at ``emit``
+    turned a lawful book-model opponent's field into a "forged field" technical
+    loss (uoh-ay26, G010 g01: ``scent value 1.14 breaks the locked model``).
+    Capping at the physical maximum still rejects what is genuinely impossible -
+    NaN, negative, off-board, or a value no lawful model can reach - while
+    accepting every field either dialect can legally produce.
     """
     size = contract.board.grid_size
-    cap = contract.pheromones.center_intensity + 1e-9
+    decay = contract.pheromones.decay
+    ceiling = (contract.pheromones.center_intensity / decay) if decay > 0.0 \
+        else contract.pheromones.center_intensity
+    cap = ceiling + 1e-9
     for key, value in message.smell_grid.items():
         number = float(value)
         if not math.isfinite(number) or number < 0.0 or number > cap:
